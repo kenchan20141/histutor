@@ -7787,33 +7787,49 @@ async function logVisitOnce() {
     }
 }
 
-// 4. 上傳 1 分鐘 (分流版)
+// 4. 上傳 1 分鐘 (分流版 - 除錯模式)
 function uploadOneMinute() {
     if (typeof firebase === 'undefined' || !database) return;
     
-    logVisitOnce(); // 確保有點名
+    logVisitOnce(); 
 
     const { y, m, d } = getDateParts();
     const identity = getIdentity();
-    const studentKey = identity.id.split('_').pop();
+    
+    // 獲取學生名稱 Key (防呆)
+    const studentKey = identity.id.includes('_') ? identity.id.split('_').pop() : identity.name; 
     
     const updates = {};
     const increment60 = firebase.database.ServerValue.increment(60);
 
-    // 1. 全校
+    // 1. 全域 (Global)
     updates[`stats_global/${y}/${m}/${d}/duration`] = increment60;
 
+    // ★★★ 2. 學生身份判斷 ★★★
     if (identity.type === 'student') {
         const classKey = `${identity.grade}${identity.class}`;
+
+        // Path A: 全校 (這是您缺少的)
+        const pathSchool = `stats_school/${y}/${m}/${d}/duration`;
+        updates[pathSchool] = increment60;
+
+        // Path B: 班級
+        const pathClass = `stats_classes/${classKey}/${y}/${m}/${d}/duration`;
+        updates[pathClass] = increment60;
         
-        // 2. 班級
-        updates[`stats_classes/${classKey}/${y}/${m}/${d}/duration`] = increment60;
-        
-        // 3. 學生
-        updates[`stats_students/${classKey}/${studentKey}/${y}/${m}/${d}/duration`] = increment60;
+        // Path C: 個人
+        const pathStudent = `stats_students/${classKey}/${studentKey}/${y}/${m}/${d}/duration`;
+        updates[pathStudent] = increment60;
+
+        // ★ 除錯訊息：請在 F12 Console 查看是否出現此行 ★
+        console.log(`[Stats] 正在上傳時長... 目標包含: ${pathSchool}`);
+    } else {
+        console.log("[Stats] 當前為訪客身份，不寫入 stats_school");
     }
 
-    database.ref().update(updates).catch(e => console.error(e));
+    database.ref().update(updates)
+        .then(() => console.log("✅ [Stats] 時長上傳成功"))
+        .catch(e => console.error("❌ [Stats] 上傳失敗 (請檢查 Rules):", e));
 }
 
     // 5. 計時器啟動 (還原你的邏輯)
